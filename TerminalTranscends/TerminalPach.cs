@@ -4,25 +4,17 @@ using GameNetcodeStuff;
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
-using TTerminal;
-using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.Networking;
-using UnityEngine.TextCore.Text;
-using UnityEngine.UI;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.LowLevel;
+using TTerminal.Engine;
+using TTerminal.TerminalCode;
 
 namespace TTerminal.Patch
 {
-    public class TerminalPach
+    internal class TerminalPach
     {
         public static TerminalNode InfLoopNode;
+        public static TTEngine Engine;
 
         [HarmonyPatch(typeof(Terminal), "Awake")]
         [HarmonyPostfix]
@@ -34,6 +26,12 @@ namespace TTerminal.Patch
             InfLoopNode.terminalOptions = new CompatibleNoun[] { new CompatibleNoun() };
             InfLoopNode.terminalOptions[0].result = InfLoopNode;
 
+            TTerminal.Terminal = __instance;
+
+            Engine = new TTEngine();
+            Engine.Initialize();
+
+            TTerminal.Engine = Engine;
             // __instance.screenText.textComponent.fontSize /= 2; // half font size - you cant see shit...
         }
 
@@ -99,7 +97,6 @@ namespace TTerminal.Patch
             HUDManager.Instance.controlTipLines[2].text = "Cycle commands : [UP/DOWN]";
         }
 
-
         [HarmonyPatch(typeof(Terminal), "LoadNewNode")]
         [HarmonyPrefix]
         static bool TLoadNewNodePrefix(Terminal __instance, ref TerminalNode node)
@@ -110,23 +107,32 @@ namespace TTerminal.Patch
 
             if (node == InfLoopNode)
             {
+                if (TTerminal.CharsWritten() == 0)
+                    return false;
+
                 History.AddCommand(); // in this loop skips first setup, so dosent add blank to history
 
                 // TTerminalInterpreter.instance.TakeInput(__instance);
+                TTerminal.input = TTerminal.GetInput();
+                TTerminal.Write("\n");
+                Engine.TakeInput();
+                TTerminal.input = null;
 
                 TTerminal.Display();
 
                 return false;
             }
 
-            // load main state
-
+            // tell it on startup to use our loop note...
+            __instance.currentNode = InfLoopNode;
+            TTerminal.GoToState(typeof(Main), true);
+            TTerminal.Display();
 
             return false;
         }
     }
 
-    class Autocomplete
+    internal class Autocomplete
     {
         private static int charsAutocompleted = 0;
         private static int cycleIndex = 0;
@@ -140,13 +146,18 @@ namespace TTerminal.Patch
         public static void TabPressed()
         {
             string NonCompletedText = TTerminal.GetAllText();
+            string input = TTerminal.GetInput();
 
             if (charsAutocompleted != 0)
             {
                 NonCompletedText = NonCompletedText.Substring(0, NonCompletedText.Length - charsAutocompleted);
+                input = input.Substring(0, input.Length - charsAutocompleted);
             }
 
-            string addString = cycleIndex % 2 == 0 ? "TextTestLOL" : "Other..."; // TTerminalInterpreter.instance.TryCompleteCommandSegment(__instance, textAddedACIdx);
+            string addString = TTerminal.Engine.Autocomplete(input, cycleIndex);
+            
+            // string addString = cycleIndex % 2 == 0 ? "TextTestLOL" : "Other..."; // TTerminalInterpreter.instance.TryCompleteCommandSegment(__instance, textAddedACIdx);
+            
             cycleIndex++;
 
             TTerminal.Paste(NonCompletedText + addString);
@@ -157,14 +168,14 @@ namespace TTerminal.Patch
         }
     }
 
-    class History
+    internal class History
     {
         private static List<string> history = new List<string>();
         private static int historyIndex = -1;
-        private static string origString = "";
+        private static string origString = null;
         public static void Reset()
         {
-            origString = "";
+            origString = null;
             historyIndex = -1;
         }
         public static void AddCommand()

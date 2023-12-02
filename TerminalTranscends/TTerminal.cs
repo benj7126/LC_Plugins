@@ -1,43 +1,61 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using System.Text;
+using TTerminal.Engine;
 using TTerminal.Patch;
 
 namespace TTerminal
 {
     public class TTerminal
     {
-        public static Terminal terminal;
+        public static Terminal Terminal;
+
+        internal static string input = null;
+        internal static TTEngine Engine = null;
+        
         public static string GetInput()
         {
-            return terminal.currentText.Substring(terminal.currentText.Length - terminal.textAdded);
+            return input == null ? Terminal.currentText.Substring(Terminal.currentText.Length - Terminal.textAdded) : input;
         }
         public static string GetAllText()
         {
-            return terminal.currentText;
+            return Terminal.currentText;
         }
         public static void Paste(string textToAdd)
         {
-            terminal.currentText = textToAdd;
+            Terminal.currentText = textToAdd;
+        }
+        public static void Clear()
+        {
+            Terminal.currentText = "";
         }
         public static void Write(string textToAdd)
         {
-            terminal.currentText += textToAdd;
+            Terminal.currentText += textToAdd;
         }
         public static void WriteLine(string textToAdd)
         {
-            terminal.currentText += textToAdd + "\n";
+            Terminal.currentText += textToAdd + "\n";
         }
         public static int CharsWritten()
         {
-            return terminal.textAdded;
+            return Terminal.textAdded;
+        }
+        public static void GoToState(Type State, bool clean = false) // if clean remove history
+        {
+            Engine.EnterState(State, clean);
+        }
+        public static void Back()
+        {
+            Engine.LastState();
         }
         public static void Display(int textAdded = 0)
         {
             TerminalPach.WritingText = true;
 
-            terminal.screenText.text = terminal.currentText;
-            terminal.textAdded = textAdded;
+            Terminal.screenText.text = Terminal.currentText;
+            Terminal.textAdded = textAdded;
 
             TerminalPach.WritingText = false;
         }
