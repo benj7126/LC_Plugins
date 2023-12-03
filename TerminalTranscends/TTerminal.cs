@@ -12,7 +12,7 @@ namespace TTerminal
         public static Terminal Terminal;
 
         internal static string input = null;
-        internal static TTEngine Engine = null;
+        public static TTEngine Engine = null;
         
         public static string GetInput()
         {

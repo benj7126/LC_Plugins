@@ -8,4 +8,4 @@
                 ES3.DeleteFile("TTSave");
 
                 ES3.Save<string>("Version", PLUGIN_VERSION, "TTSave");
-            }              ThisLogger = Logger;              Harmony.CreateAndPatchAll(typeof(Patch.TerminalPach));              Log($"Plugin {Plugin.PLUGIN_GUID} is loaded!");         }     } }
+            }              ThisLogger = Logger;              //ES3.Save<bool>("HasUsedTerminal", false, "LCGeneralSaveData");              Harmony.CreateAndPatchAll(typeof(Patch.TerminalPach));              Log($"Plugin {Plugin.PLUGIN_GUID} is loaded!");         }     } }

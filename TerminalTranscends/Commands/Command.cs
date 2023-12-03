@@ -1,5 +1,8 @@
-﻿using System;
+﻿using DunGen;
+using JetBrains.Annotations;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using UnityEngine.UI;
 
@@ -8,10 +11,11 @@ namespace TTerminal.Commands
     public abstract class Command
     {
         public abstract string Name { get; }
+        public abstract string Description { get; }
         public virtual Type State => null;
         public virtual int Priority => 0;
 
-        public CParam[] args;
+        public CParam[] args = new CParam[0];
 
         public virtual void Setup() { }
 
@@ -56,16 +60,54 @@ namespace TTerminal.Commands
 
         public object ConvertToType(string toConvert)
         {
-            object converted = Convert.ChangeType(toConvert, type);
+            if (TTDataSet != null)
+            {
+                Dictionary<string, object> converter = TTerminal.Engine.dataSets[TTDataSet].GetData();
+                Plugin.Log(converter);
 
-            if (converted != null)
+                foreach (KeyValuePair<string, object> kvp in converter)
+                {
+                    Plugin.Log("Compare: " + RemovePunctuation(kvp.Key) + " == " + toConvert + " -"+ (RemovePunctuation(kvp.Key) == toConvert));
+                    if (RemovePunctuation(kvp.Key) == toConvert)
+                        return kvp.Value;
+                }
+
+                return null;
+            }
+            else
+            {
+                object converted = null;
+
+                try
+                {
+                    converted = Convert.ChangeType(toConvert, type);
+                }
+                catch
+                {
+                    return null;
+                }
+
                 return converted;
-
-            return null;
+            }
+        }
+        private string RemovePunctuation(string s)
+        {
+            StringBuilder stringBuilder = new StringBuilder();
+            foreach (char c in s)
+            {
+                if (!char.IsPunctuation(c))
+                {
+                    stringBuilder.Append(c);
+                }
+            }
+            return stringBuilder.ToString().ToLower();
         }
         public string[] GetPossibleValues()
         {
-            return new string[] { "test" };
+            if (TTDataSet != null)
+                return TTerminal.Engine.dataSets[TTDataSet].GetData().Keys.ToArray();
+
+            return new string[0];
         }
     }
 }

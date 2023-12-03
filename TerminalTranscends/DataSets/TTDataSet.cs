@@ -8,7 +8,7 @@ namespace TTerminal.DataSets
     {
         public Type[] DSArr;
 
-        public UsingDSAttribute(Type[] DSArr)
+        public UsingDSAttribute(params Type[] DSArr)
         {
             this.DSArr = DSArr;
         }

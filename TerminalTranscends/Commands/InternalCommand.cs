@@ -4,7 +4,7 @@ using System.Text;
 
 namespace TTerminal.Commands
 {
-    internal class InternalCommand : Command
+    internal abstract class InternalCommand : Command
     {
         private string name;
         public override string Name => name;
@@ -12,6 +12,10 @@ namespace TTerminal.Commands
         public InternalCommand(string name)
         {
             this.name = name;
+        }
+        public override string GetNameAndParams()
+        {
+            return name;
         }
 
         internal override void HandleCommandSetup() { }

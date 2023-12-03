@@ -13,10 +13,11 @@ using UnityEngine.Analytics;
 
 namespace TTerminal.Engine
 {
-    internal class TTEngine
+    public class TTEngine
     {
-        CommandKeeper keeper = new CommandKeeper();
-        Dictionary<Type, TTDataSet> dataSets = new Dictionary<Type, TTDataSet>();
+        public CommandKeeper keeper = new CommandKeeper();
+        public Dictionary<Type, TTDataSet> dataSets = new Dictionary<Type, TTDataSet>();
+        public Command executingCommand = null;
         
         public void Initialize()
         {
@@ -39,7 +40,8 @@ namespace TTerminal.Engine
             // Loop through each type and filter for classes
             foreach (Type type in types)
             {
-                if (typeof(TTCommand).IsAssignableFrom(type) && type != typeof(TTCommand))
+                if (typeof(TTCommand).IsAssignableFrom(type) && type != typeof(TTCommand) ||
+                    typeof(TTMultiCommand).IsAssignableFrom(type) && type != typeof(TTMultiCommand))
                 {
                     Command command = (Command)Activator.CreateInstance(type);
                     keeper.AllCommands.Add(command);
@@ -61,7 +63,7 @@ namespace TTerminal.Engine
                     if (tmpState.ParentState == null)
                         continue;
 
-                    TransitionCommand command = new TransitionCommand(RemovePunctuation(tmpState.Name), tmpState.ParentState);
+                    TransitionCommand command = new TransitionCommand(RemovePunctuation(tmpState.Name), type);
                     keeper.AllCommands.Add(command);
 
                     TTState tmpParentState = (TTState)Activator.CreateInstance(tmpState.ParentState);
@@ -76,13 +78,35 @@ namespace TTerminal.Engine
             foreach (Command command in keeper.AllCommands)
                 command.HandleCommandSetup();
         }
-        public string Autocomplete(string input, int cycleIndex)
+
+        internal string Autocomplete(string input, int cycleIndex)
         {
+            if (executingCommand != null)
+            {
+                TTMultiCommand MC = executingCommand as TTMultiCommand;
+                if (MC != null)
+                {
+                    string[] responses = MC.GetAllowedResponses();
+
+                    if (responses.Length == 0)
+                        return "";
+
+                    int cIdx = cycleIndex % (responses.Length + 1);
+
+                    return cIdx == responses.Length ? "" : responses[cIdx];
+                }
+
+                return "";
+            }
+
             string text = RemovePunctuation(input);
             string[] array = text.Split(" ", StringSplitOptions.RemoveEmptyEntries);
-            array = array.Length == 0 ? new string[] { "" } : array;
+            if (text.Length == 0 || (text.Length > 0 && text.Last() == ' '))
+            {
+                array = array.AddItem("").ToArray();
+            }
 
-            string lastArg = array.Length == 0 ? "" : array[array.Length - 1];
+            string lastArg = array[array.Length - 1];
 
             Command[] commands = keeper.GetActiveCommands();
 
@@ -92,14 +116,10 @@ namespace TTerminal.Engine
 
             List<string> outputs = new List<string>();
 
-            Plugin.Log("1");
-
             foreach (Command command in commands)
             {
-                Plugin.Log("2");
                 if (array.Length == 1)
                 {
-                    Plugin.Log("add " + command.Name);
                     outputs.Add(command.Name);
                     continue;
                 }
@@ -107,24 +127,24 @@ namespace TTerminal.Engine
                 if (RemovePunctuation(command.Name) != array[0])
                     continue;
 
-                Plugin.Log("3");
-                if (array.Length > command.args.Length)
+                // -1 cuz the 0'th element not an arg
+                if (array.Length-1 > command.args.Length)
                     continue;
 
-                int i = 1;
-                for (i = 1; i < array.Length; i++)
+                int i = 0;
+                bool skip = false;
+                for (; i < array.Length - 2; i++)
                 {
-                    if (command.args[i].ConvertToType(array[i]) == null && command.args[i].defaultValue == null)
-                        continue; // if theres a default value, it dosent have to match
+                    if (command.args[i].ConvertToType(array[i + 1]) == null && command.args[i].defaultValue == null)
+                        skip = true;
                 }
 
-                Plugin.Log("4");
-                outputs.AddRange(command.args[i].GetPossibleValues());
+                if (!skip)
+                    outputs.AddRange(command.args[i].GetPossibleValues());
             }
 
             List<string> semiMatch = new List<string>();
 
-            Plugin.Log("5");
             if (lastArg.Length == 0)
             {
                 semiMatch = outputs;
@@ -133,22 +153,16 @@ namespace TTerminal.Engine
             {
                 for (int i = 0; i < outputs.Count; i++)
                 {
-                    Plugin.Log("5.5 - " + i);
                     for (int argI = 0; argI < lastArg.Length; argI++)
                     {
                         string compare = RemovePunctuation(outputs[i]);
 
-                        Plugin.Log("6");
                         if (compare.Length < lastArg.Length)
                             break;
 
-                        Plugin.Log(argI);
-                        Plugin.Log(lastArg[argI]);
-                        Plugin.Log(compare[argI]);
                         if (lastArg[argI] != compare[argI])
                             break;
 
-                        Plugin.Log("7");
                         if (argI == lastArg.Length - 1)
                         {
                             semiMatch.Add(outputs[i].Substring(argI + 1));
@@ -157,16 +171,31 @@ namespace TTerminal.Engine
                 }
             }
 
-            if (semiMatch.Count == 0)
+            string[] atocompleteOptions = keeper.curState.ModifyAutoComplete(semiMatch.ToArray());
+
+            if (atocompleteOptions.Length == 0)
                 return "";
 
-            int cycleIndexP1 = cycleIndex % (semiMatch.Count + 1);
+            int cycleIndexP1 = cycleIndex % (atocompleteOptions.Length + 1);
 
-            return cycleIndexP1 == semiMatch.Count ? "" : semiMatch[cycleIndexP1];
+            return cycleIndexP1 == atocompleteOptions.Length ? "" : atocompleteOptions[cycleIndexP1];
         }
 
-        public void TakeInput()
+        internal void TakeInput()
         {
+            if (executingCommand != null)
+            {
+                if (!executingCommand.ExecuteCommand(new object[0]))
+                    executingCommand = null;
+                return;
+            }
+
+            if (keeper.curState.CanRun())
+            {
+                keeper.curState.Run();
+                return;
+            }
+
             string text = RemovePunctuation(TTerminal.GetInput());
             string[] array = text.Split(" ", StringSplitOptions.RemoveEmptyEntries);
 
@@ -189,16 +218,18 @@ namespace TTerminal.Engine
 
             if (passedCommand == null)
             {
-                TTerminal.WriteLine($"Command {TTerminal.GetInput()} is unknown.");
+                TTerminal.WriteLine($"Command \"{TTerminal.GetInput()}\" is unknown.");
                 return;
             }
 
             object[] convertedParams = new object[passedCommand.args.Length];
 
+            Plugin.Log("c");
+
             for (int i = 0; i < passedCommand.args.Length; i++)
             {
                 CParam param = passedCommand.args[i];
-                string strParam = array[i];
+                string strParam = array[i + 1];
 
                 object converted = param.ConvertToType(strParam);
                 if (converted == null)
@@ -212,10 +243,19 @@ namespace TTerminal.Engine
                     convertedParams[i] = param.defaultValue;
                     continue;
                 }
+
+                Plugin.Log(i + " - " + converted);
+
                 convertedParams[i] = converted;
             }
 
-            passedCommand.ExecuteCommand(convertedParams);
+            Plugin.Log("d");
+
+
+            if (passedCommand.ExecuteCommand(convertedParams))
+            {
+                executingCommand = passedCommand;
+            }
         }
 
         private string RemovePunctuation(string s)
@@ -231,20 +271,20 @@ namespace TTerminal.Engine
             return stringBuilder.ToString().ToLower();
         }
 
-        private void SetState(TTState state)
+        internal void SetState(TTState state)
         {
             keeper.curState = state;
             state.EnterState();
         }
 
-        public void EnterState(Type stateType, bool clean = false)
+        internal void EnterState(Type stateType, bool clean = false)
         {
             SetState((TTState)Activator.CreateInstance(stateType));
 
             StateHistory.AddState(keeper.curState, clean);
         }
 
-        public void LastState()
+        internal void LastState()
         {
             SetState(StateHistory.Back());
         }
@@ -252,11 +292,11 @@ namespace TTerminal.Engine
 
     public class CommandKeeper
     {
-        public TTState curState;
-        public List<Command> AllCommands = new List<Command>();
+        internal TTState curState;
+        internal List<Command> AllCommands = new List<Command>();
 
-        public List<Command> GlobalCommands = new List<Command>();
-        public List<Command> fakeGlovalCommands = new List<Command>();
+        internal List<Command> GlobalCommands = new List<Command>();
+        internal List<Command> fakeGlovalCommands = new List<Command>();
 
         public Command[] GetLocalCommands()
         {
@@ -266,9 +306,9 @@ namespace TTerminal.Engine
         public Command[] GetActiveCommands()
         {
             Command[] retCMD = GetLocalCommands();
-            
-            retCMD.AddRangeToArray(GlobalCommands.ToArray());
-            retCMD.AddRangeToArray(fakeGlovalCommands.ToArray());
+
+            retCMD = retCMD.AddRangeToArray(GlobalCommands.ToArray());
+            retCMD = retCMD.AddRangeToArray(fakeGlovalCommands.ToArray());
             
             return retCMD;
         }

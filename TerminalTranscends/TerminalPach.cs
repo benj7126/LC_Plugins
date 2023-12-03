@@ -152,7 +152,7 @@ namespace TTerminal.Patch
             {
                 NonCompletedText = NonCompletedText.Substring(0, NonCompletedText.Length - charsAutocompleted);
                 input = input.Substring(0, input.Length - charsAutocompleted);
-            }
+            } 
 
             string addString = TTerminal.Engine.Autocomplete(input, cycleIndex);
             

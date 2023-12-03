@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -7,15 +8,38 @@ using TTerminal.DataSets;
 
 namespace TTerminal.Commands
 {
-    public abstract class TTCommand : Command
+    public abstract class TTMultiCommand : Command
     {
+        private IEnumerator IE;
         private MethodInfo MI;
 
+        public bool awaitingResult = false;
+        private string response;
+        public string Response => response;
+        public bool Confirmed => RemovePunctuation(response) == "confirm";
         public override bool ExecuteCommand(object[] paramArr)
         {
-            MI.Invoke(this, paramArr);
-            return false;
+            if (awaitingResult)
+            {
+                response = TTerminal.GetInput();
+            }
+            else
+            {
+                IE = (IEnumerator)MI.Invoke(this, paramArr);
+                awaitingResult = true;
+            }
+
+            bool done = IE.MoveNext();
+
+            awaitingResult = done;
+            return done;
         }
+
+        public virtual string[] GetAllowedResponses()
+        {
+            return new string[0];
+        }
+
         public override string GetNameAndParams()
         {
             string NnP = Name;
@@ -30,10 +54,10 @@ namespace TTerminal.Commands
         internal override void HandleCommandSetup()
         {
             MI = GetType().GetMethod("run", BindingFlags.Public | BindingFlags.Instance);
-
-            if (MI == null)
+            
+            if (MI == null || MI.ReturnType != typeof(IEnumerator))
             {
-                Plugin.Warn($"The type {GetType()} dosent contain a 'public void run(...) {{ ... }}' function.");
+                Plugin.Warn($"The type {GetType()} dosent contain a 'public IEnumerator run(...) {{ ... yield break; }}' function.");
                 return;
             }
 
@@ -72,8 +96,19 @@ namespace TTerminal.Commands
                 }
             }
 
-            if (Setup != null)
-                Setup();
+            Setup();
+        }
+        private string RemovePunctuation(string s)
+        {
+            StringBuilder stringBuilder = new StringBuilder();
+            foreach (char c in s)
+            {
+                if (!char.IsPunctuation(c))
+                {
+                    stringBuilder.Append(c);
+                }
+            }
+            return stringBuilder.ToString().ToLower();
         }
     }
 }

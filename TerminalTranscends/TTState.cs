@@ -23,12 +23,16 @@ namespace TTerminal
             }
         }
 
+        public virtual bool CanRun() { return false; }
+        public virtual void Run() { }
+        public virtual string[] ModifyAutoComplete(string[] strings) { return strings;  }
+
         public abstract string Name { get; }
         public abstract Type ParentState { get; }
 
         public void EnterState()
         {
-            if (ES3.Load<bool>("HasEntered" + Name, "TTSave", false))
+            if (false && ES3.Load<bool>("HasEntered" + Name, "TTSave", false))
             {
                 Enter();
             }
